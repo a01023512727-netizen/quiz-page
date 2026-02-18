@@ -1,15 +1,18 @@
 <script>
 const API_KEY = "AIzaSyBoepxG2-8I6RNfsYc1kchhyVQvei9NnNA";
 const SPREADSHEET_ID = "1CMyntzm9c5-bvtOySDdH2JdNpwxrbTdTIH2cG3ykReE";
-const RANGE = "시트1!A:B"; // 탭 이름에 맞게 수정
+const RANGE = "시트1!A:B";
 
 function groupDataFromValues(values){
   // values: [ ["성왕","관산성전투"], ["","진흥왕에게 죽음"], ... ]
   let result = [], current = null;
 
-  for (let i = 0; i < values.length; i++) {
-    const A = (values[i][0] ?? "").trim();
-    const B = (values[i][1] ?? "").trim();
+  for (const row of values) {
+    // ✅ 빈 행([]) 무시
+    if (!row || row.length === 0) continue;
+
+    const A = (row[0] ?? "").trim();
+    const B = (row[1] ?? "").trim();
 
     if (A) {
       current = { question: A, answers: [], open: false };
@@ -23,11 +26,10 @@ function groupDataFromValues(values){
 }
 
 async function loadData(){
-  // Sheets API URL
   const url =
     `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(RANGE)}?key=${API_KEY}`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
     const t = await res.text();
     alert("시트 불러오기 실패:\n" + t);
@@ -40,7 +42,6 @@ async function loadData(){
   render(quizData);
 }
 
-/* 아래 render()는 기존 코드 그대로 두면 됩니다 */
 function render(data){
   const container=document.getElementById("quiz");
   container.innerHTML="";
@@ -77,4 +78,7 @@ function render(data){
     container.appendChild(card);
   });
 }
+
+// ✅ 페이지 열자마자 자동으로 불러오기 (원치 않으면 이 줄 삭제)
+loadData();
 </script>
