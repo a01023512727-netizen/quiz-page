@@ -1,151 +1,147 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>구글시트 퀴즈</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif; margin: 0; background:#f6f7fb; }
-    .wrap { max-width: 760px; margin: 0 auto; padding: 20px; }
-    .header { background:#fff; border:1px solid #e6e8ef; border-radius: 14px; padding: 16px; }
-    .title { font-size: 20px; font-weight: 800; margin: 0 0 6px; }
-    .sub { margin: 0; color:#666; font-size: 13px; line-height: 1.4; }
-    .status { margin-top: 10px; font-size: 13px; color:#444; white-space: pre-wrap; }
-    .status.err { color:#b00020; }
-    .card { background:#fff; border:1px solid #e6e8ef; border-radius: 14px; padding: 16px; margin-top: 12px; }
-    .q { font-size: 18px; font-weight: 800; margin: 0 0 12px; }
-    .btn { width: 100%; padding: 12px 12px; border-radius: 12px; border:1px solid #d7dbe7; background:#fafbff; font-weight: 700; cursor: pointer; }
-    .btn:hover { background:#f1f4ff; }
-    .masked { margin-top: 10px; color:#888; letter-spacing: 2px; }
-    ul { margin: 10px 0 0; padding-left: 18px; }
-    li { margin: 6px 0; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>시대별 퀴즈</title>
+<style>
+body{font-family:system-ui;margin:0;background:#f4f6fb}
+.wrap{max-width:800px;margin:0 auto;padding:20px}
+.header{background:#fff;padding:16px;border-radius:14px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.tab{padding:8px 14px;border-radius:20px;border:1px solid #ccc;background:#fff;cursor:pointer}
+.tab.active{background:#333;color:#fff;border-color:#333}
+.card{background:#fff;border-radius:14px;padding:16px;margin-top:12px;box-shadow:0 4px 12px rgba(0,0,0,.05)}
+.q{font-weight:700;margin-bottom:10px}
+.btn{width:100%;padding:10px;border-radius:10px;border:1px solid #ddd;background:#fafafa;cursor:pointer}
+.mask{margin-top:8px;color:#888}
+ul{margin-top:8px}
+</style>
 </head>
 
 <body>
-  <div class="wrap">
-    <div class="header">
-      <p class="title">구글시트 퀴즈</p>
-      <p class="sub">
-        A열=문제, B열=답<br/>
-        A가 빈칸으로 이어지면 같은 문제의 답으로 묶어요.<br/>
-        정답은 처음엔 가리고, 버튼을 누르면 보여줘요.
-      </p>
-      <div id="status" class="status">로딩 준비중...</div>
-    </div>
+<div class="wrap">
+<div class="header">
+<h2>시대별 퀴즈</h2>
+<div id="status">로딩중...</div>
+</div>
 
-    <div id="list"></div>
-  </div>
+<div class="tabs" id="tabs"></div>
+<div id="list"></div>
+</div>
 
 <script>
-  // ✅ 너 값 (이미 넣어둠)
-  const API_KEY = "AIzaSyBoepxG2-8I6RNfsYc1kchhyVQvei9NnNA";
-  const SPREADSHEET_ID = "1CMyntzm9c5-bvtOySDdH2JdNpwxrbTdTIH2cG3ykReE";
-  // ✅ 한글 시트명 안전 처리: 따옴표 포함 권장
-  const RANGE = "'시트1'!A:B";
+const API_KEY = "AIzaSyBoepxG2-8I6RNfsYc1kchhyVQvei9NnNA";
+const SPREADSHEET_ID = "1CMyntzm9c5-bvtOySDdH2JdNpwxrbTdTIH2cG3ykReE";
+const RANGE = "'시트1'!A:C";
 
-  function setStatus(msg, isError=false) {
-    const el = document.getElementById("status");
-    el.textContent = msg;
-    el.className = "status" + (isError ? " err" : "");
-  }
+let allData = {};
+let currentTab = null;
 
-  function rowsToQuiz(values) {
-    const result = [];
-    let current = null;
+function setStatus(msg){
+document.getElementById("status").textContent = msg;
+}
 
-    for (const row of values) {
-      // ✅ 완전 빈 행([]) 무시
-      if (!row || row.length === 0) continue;
+function groupByEra(values){
+let result = {};
 
-      const A = (row[0] ?? "").trim();
-      const B = (row[1] ?? "").trim();
+for(let row of values){
+if(!row || row.length === 0) continue;
 
-      if (A) {
-        current = { question: A, answers: [], open: false };
-        result.push(current);
-        if (B) current.answers.push(B);
-      } else {
-        if (current && B) current.answers.push(B);
-      }
-    }
-    return result;
-  }
+let era = (row[0]||"").trim();
+let question = (row[1]||"").trim();
+let answer = (row[2]||"").trim();
 
-  function render(items) {
-    const list = document.getElementById("list");
-    list.innerHTML = "";
+if(!era || !question) continue;
 
-    if (!items.length) {
-      list.innerHTML = `<div class="card"><div class="q">표시할 문제가 없어요</div><div>A/B 컬럼에 값이 있는지 확인해 주세요.</div></div>`;
-      return;
-    }
+if(!result[era]) result[era] = [];
 
-    items.forEach((item, idx) => {
-      const card = document.createElement("div");
-      card.className = "card";
+result[era].push({
+question: question,
+answers: answer ? answer.split(",").map(v=>v.trim()) : [],
+open:false
+});
+}
 
-      const q = document.createElement("p");
-      q.className = "q";
-      q.textContent = `${idx + 1}. ${item.question}`;
-      card.appendChild(q);
+return result;
+}
 
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn";
-      btn.textContent = item.open ? "정답 숨기기" : "정답 보기 (탭)";
-      btn.onclick = () => {
-        item.open = !item.open;
-        render(items);
-      };
-      card.appendChild(btn);
+function renderTabs(){
+const tabsDiv = document.getElementById("tabs");
+tabsDiv.innerHTML = "";
 
-      if (!item.open) {
-        const masked = document.createElement("div");
-        masked.className = "masked";
-        masked.textContent = "••••••••••••••";
-        card.appendChild(masked);
-      } else {
-        const ul = document.createElement("ul");
-        item.answers.forEach(ans => {
-          const li = document.createElement("li");
-          li.textContent = ans;
-          ul.appendChild(li);
-        });
-        card.appendChild(ul);
-      }
+Object.keys(allData).forEach(era=>{
+const btn = document.createElement("div");
+btn.className = "tab" + (era===currentTab?" active":"");
+btn.textContent = era;
+btn.onclick = ()=>{
+currentTab = era;
+renderTabs();
+renderList();
+};
+tabsDiv.appendChild(btn);
+});
+}
 
-      list.appendChild(card);
-    });
-  }
+function renderList(){
+const list = document.getElementById("list");
+list.innerHTML = "";
 
-  async function loadData() {
-    setStatus("구글시트에서 데이터를 불러오는 중...");
+if(!currentTab) return;
 
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(RANGE)}?key=${API_KEY}`;
+allData[currentTab].forEach((item,i)=>{
+const card = document.createElement("div");
+card.className="card";
 
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      const t = await res.text();
-      setStatus("불러오기 실패!\n" + t, true);
-      return;
-    }
+const q = document.createElement("div");
+q.className="q";
+q.textContent = (i+1)+". "+item.question;
+card.appendChild(q);
 
-    const data = await res.json();
-    const values = data.values || [];
+const btn = document.createElement("button");
+btn.className="btn";
 
-    const quiz = rowsToQuiz(values);
-    render(quiz);
+const answerCount = item.answers.length;
+const maskDots = "●".repeat(answerCount);
 
-    setStatus(`완료! 문제 ${quiz.length}개를 불러왔어요.`);
-  }
+btn.textContent = item.open ? "정답 숨기기" : `${maskDots} (${answerCount}개)`;
+btn.onclick = ()=>{
+item.open=!item.open;
+renderList();
+};
+card.appendChild(btn);
 
-  // ✅ 요소가 다 만들어진 뒤에 실행 (흰 화면 방지 핵심)
-  window.addEventListener("DOMContentLoaded", () => {
-    loadData().catch(err => {
-      setStatus("자바스크립트 에러:\n" + (err?.message || String(err)), true);
-    });
-  });
+if(item.open){
+const ul = document.createElement("ul");
+item.answers.forEach(a=>{
+const li=document.createElement("li");
+li.textContent=a;
+ul.appendChild(li);
+});
+card.appendChild(ul);
+}
+
+list.appendChild(card);
+});
+}
+
+async function loadData(){
+const url=`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(RANGE)}?key=${API_KEY}`;
+const res = await fetch(url);
+const data = await res.json();
+
+allData = groupByEra(data.values||[]);
+
+currentTab = Object.keys(allData)[0];
+
+renderTabs();
+renderList();
+
+setStatus("불러오기 완료");
+}
+
+window.addEventListener("DOMContentLoaded",loadData);
 </script>
+
 </body>
 </html>
