@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>퀴즈</title>
+<style>
+body{font-family:system-ui;margin:0;background:#f4f6fb}
+.wrap{max-width:700px;margin:0 auto;padding:20px}
+.card{background:#fff;border-radius:12px;padding:16px;margin-top:12px;box-shadow:0 4px 12px rgba(0,0,0,.05)}
+.q{font-size:18px;font-weight:700;margin-bottom:10px}
+.btn{width:100%;padding:12px;border-radius:10px;border:1px solid #ddd;background:#fafafa;font-weight:600;cursor:pointer}
+.mask{color:#aaa;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h2>구글시트 퀴즈</h2>
+<input id="csvUrl" placeholder="구글시트 CSV 주소 입력" style="width:100%;padding:10px;border-radius:10px;border:1px solid #ddd">
+<button onclick="loadData()" class="btn" style="margin-top:10px">불러오기</button>
+<div id="quiz"></div>
+</div>
+
+<script>
+function parseCSV(text){
+const rows=[];let row=[];let cur="";let inQuotes=false;
+for(let i=0;i<text.length;i++){
+const c=text[i],next=text[i+1];
+if(c=='"'){if(inQuotes&&next=='"'){cur+='"';i++;}else{inQuotes=!inQuotes}}
+else if(c==','&&!inQuotes){row.push(cur);cur=""}
+else if((c=='\n'||c=='\r')&&!inQuotes){row.push(cur);rows.push(row);row=[];cur=""}
+else{cur+=c}
+}
+if(cur||row.length){row.push(cur);rows.push(row)}
+return rows;
+}
+
+function groupData(rows){
+let result=[],current=null;
+for(let i=1;i<rows.length;i++){
+let A=(rows[i][0]||"").trim();
+let B=(rows[i][1]||"").trim();
+if(A){
+current={question:A,answers:[],open:false};
+result.push(current);
+if(B)current.answers.push(B);
+}else{
+if(current&&B)current.answers.push(B);
+}
+}
+return result;
+}
+
+async function loadData(){
+const url=document.getElementById("csvUrl").value;
+const res=await fetch(url);
+const text=await res.text();
+const rows=parseCSV(text);
+const quizData=groupData(rows);
+render(quizData);
+}
+
+function render(data){
+const container=document.getElementById("quiz");
+container.innerHTML="";
+data.forEach((item,i)=>{
+const card=document.createElement("div");
+card.className="card";
+
+const q=document.createElement("div");
+q.className="q";
+q.textContent=(i+1)+". "+item.question;
+
+const btn=document.createElement("button");
+btn.className="btn";
+btn.textContent=item.open?"정답 숨기기":"정답 보기";
+btn.onclick=()=>{item.open=!item.open;render(data)};
+
+card.appendChild(q);
+card.appendChild(btn);
+
+if(!item.open){
+const mask=document.createElement("div");
+mask.className="mask";
+mask.textContent="••••••••••";
+card.appendChild(mask);
+}else{
+const ul=document.createElement("ul");
+item.answers.forEach(a=>{
+const li=document.createElement("li");
+li.textContent=a;
+ul.appendChild(li);
+});
+card.appendChild(ul);
+}
+
+container.appendChild(card);
+});
+}
+</script>
+</body>
+</html>
