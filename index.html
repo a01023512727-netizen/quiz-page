@@ -1,147 +1,216 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>시대별 퀴즈</title>
-<style>
-body{font-family:system-ui;margin:0;background:#f4f6fb}
-.wrap{max-width:800px;margin:0 auto;padding:20px}
-.header{background:#fff;padding:16px;border-radius:14px;margin-bottom:12px}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-.tab{padding:8px 14px;border-radius:20px;border:1px solid #ccc;background:#fff;cursor:pointer}
-.tab.active{background:#333;color:#fff;border-color:#333}
-.card{background:#fff;border-radius:14px;padding:16px;margin-top:12px;box-shadow:0 4px 12px rgba(0,0,0,.05)}
-.q{font-weight:700;margin-bottom:10px}
-.btn{width:100%;padding:10px;border-radius:10px;border:1px solid #ddd;background:#fafafa;cursor:pointer}
-.mask{margin-top:8px;color:#888}
-ul{margin-top:8px}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>시대별 퀴즈</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif; margin: 0; background:#f6f7fb; }
+    .wrap { max-width: 820px; margin: 0 auto; padding: 20px; }
+    .header { background:#fff; border:1px solid #e6e8ef; border-radius: 14px; padding: 16px; }
+    .title { font-size: 20px; font-weight: 800; margin: 0 0 6px; }
+    .sub { margin: 0; color:#666; font-size: 13px; line-height: 1.45; }
+    .status { margin-top: 10px; font-size: 13px; color:#444; white-space: pre-wrap; }
+    .status.err { color:#b00020; }
+
+    .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-top: 12px; }
+    .tab { padding: 8px 14px; border-radius: 999px; border:1px solid #d7dbe7; background:#fff; cursor:pointer; font-weight:700; }
+    .tab.active { background:#111827; color:#fff; border-color:#111827; }
+
+    .card { background:#fff; border:1px solid #e6e8ef; border-radius: 14px; padding: 16px; margin-top: 12px; }
+    .q { font-size: 18px; font-weight: 800; margin: 0 0 12px; }
+
+    .btn { width: 100%; padding: 12px 12px; border-radius: 12px; border:1px solid #d7dbe7; background:#fafbff; font-weight: 800; cursor: pointer; text-align:center; }
+    .btn:hover { background:#f1f4ff; }
+
+    .hint { margin-top: 10px; font-size: 12px; color:#666; }
+    ul { margin: 12px 0 0; padding-left: 18px; }
+    li { margin: 6px 0; }
+  </style>
 </head>
 
 <body>
-<div class="wrap">
-<div class="header">
-<h2>시대별 퀴즈</h2>
-<div id="status">로딩중...</div>
-</div>
+  <div class="wrap">
+    <div class="header">
+      <p class="title">시대별 퀴즈</p>
+      <p class="sub">
+        시트 작성 규칙(스샷 방식)<br/>
+        - A: 시대(한 번 나오고 아래는 빈칸)<br/>
+        - B: 문제(한 번 나오고 아래는 빈칸)<br/>
+        - C: 답(여러 줄로 계속). B가 빈칸이면 같은 문제의 추가 답
+      </p>
+      <div id="status" class="status">로딩 준비중...</div>
+      <div id="tabs" class="tabs"></div>
+      <div class="hint">탭을 눌러 시대를 바꿀 수 있어요.</div>
+    </div>
 
-<div class="tabs" id="tabs"></div>
-<div id="list"></div>
-</div>
+    <div id="list"></div>
+  </div>
 
 <script>
-const API_KEY = "AIzaSyBoepxG2-8I6RNfsYc1kchhyVQvei9NnNA";
-const SPREADSHEET_ID = "1CMyntzm9c5-bvtOySDdH2JdNpwxrbTdTIH2cG3ykReE";
-const RANGE = "'시트1'!A:C";
+  // ✅ 너 값 (이미 넣어둠)
+  const API_KEY = "AIzaSyBoepxG2-8I6RNfsYc1kchhyVQvei9NnNA";
+  const SPREADSHEET_ID = "1CMyntzm9c5-bvtOySDdH2JdNpwxrbTdTIH2cG3ykReE";
+  const RANGE = "'시트1'!A:C";
 
-let allData = {};
-let currentTab = null;
+  let dataByEra = {};     // { "고구려": [ {question, answers[], open}, ... ], "백제": [...] }
+  let currentEra = null;
 
-function setStatus(msg){
-document.getElementById("status").textContent = msg;
-}
+  function setStatus(msg, isError=false) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = "status" + (isError ? " err" : "");
+  }
 
-function groupByEra(values){
-let result = {};
+  // ✅ 스샷 구조 파서:
+  // A가 채워지면 currentEra 변경
+  // B가 채워지면 currentQuestion 시작
+  // C가 채워진 모든 줄은 currentQuestion.answers에 push
+  function parseSheetValues(values) {
+    const result = {};
+    let era = null;
+    let currentQuestionObj = null;
 
-for(let row of values){
-if(!row || row.length === 0) continue;
+    for (const row of values) {
+      if (!row || row.length === 0) continue;
 
-let era = (row[0]||"").trim();
-let question = (row[1]||"").trim();
-let answer = (row[2]||"").trim();
+      const A = (row[0] ?? "").trim();
+      const B = (row[1] ?? "").trim();
+      const C = (row[2] ?? "").trim();
 
-if(!era || !question) continue;
+      // 시대 시작/변경
+      if (A) {
+        era = A;
+        if (!result[era]) result[era] = [];
+        currentQuestionObj = null; // 시대 바뀌면 문제도 새로
+      }
 
-if(!result[era]) result[era] = [];
+      // 시대가 없으면 아무것도 못 함(상단에 시대부터 있어야 함)
+      if (!era) continue;
 
-result[era].push({
-question: question,
-answers: answer ? answer.split(",").map(v=>v.trim()) : [],
-open:false
-});
-}
+      // 문제 시작/변경
+      if (B) {
+        currentQuestionObj = { question: B, answers: [], open: false };
+        result[era].push(currentQuestionObj);
+      }
 
-return result;
-}
+      // 답 추가: (현재 문제가 있을 때만)
+      if (C && currentQuestionObj) {
+        currentQuestionObj.answers.push(C);
+      }
+    }
 
-function renderTabs(){
-const tabsDiv = document.getElementById("tabs");
-tabsDiv.innerHTML = "";
+    // 답이 0개인 문제도 있을 수 있는데, UI에서 표시만 하고 마스킹 0개로 처리됨
+    return result;
+  }
 
-Object.keys(allData).forEach(era=>{
-const btn = document.createElement("div");
-btn.className = "tab" + (era===currentTab?" active":"");
-btn.textContent = era;
-btn.onclick = ()=>{
-currentTab = era;
-renderTabs();
-renderList();
-};
-tabsDiv.appendChild(btn);
-});
-}
+  function renderTabs() {
+    const tabsEl = document.getElementById("tabs");
+    tabsEl.innerHTML = "";
 
-function renderList(){
-const list = document.getElementById("list");
-list.innerHTML = "";
+    const eras = Object.keys(dataByEra);
+    eras.forEach((era) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tab" + (era === currentEra ? " active" : "");
+      b.textContent = era;
+      b.onclick = () => {
+        currentEra = era;
+        renderTabs();
+        renderList();
+      };
+      tabsEl.appendChild(b);
+    });
+  }
 
-if(!currentTab) return;
+  function renderList() {
+    const listEl = document.getElementById("list");
+    listEl.innerHTML = "";
 
-allData[currentTab].forEach((item,i)=>{
-const card = document.createElement("div");
-card.className="card";
+    if (!currentEra) return;
 
-const q = document.createElement("div");
-q.className="q";
-q.textContent = (i+1)+". "+item.question;
-card.appendChild(q);
+    const items = dataByEra[currentEra] || [];
+    if (!items.length) {
+      listEl.innerHTML = `<div class="card"><div class="q">문제가 없어요</div><div>A/B/C 작성 규칙을 확인해 주세요.</div></div>`;
+      return;
+    }
 
-const btn = document.createElement("button");
-btn.className="btn";
+    items.forEach((item, idx) => {
+      const card = document.createElement("div");
+      card.className = "card";
 
-const answerCount = item.answers.length;
-const maskDots = "●".repeat(answerCount);
+      const q = document.createElement("p");
+      q.className = "q";
+      q.textContent = `${idx + 1}. ${item.question}`;
+      card.appendChild(q);
 
-btn.textContent = item.open ? "정답 숨기기" : `${maskDots} (${answerCount}개)`;
-btn.onclick = ()=>{
-item.open=!item.open;
-renderList();
-};
-card.appendChild(btn);
+      const count = item.answers.length;
+      const dots = count > 0 ? "●".repeat(Math.min(count, 30)) : "—";
+      // 너무 많으면 ● 30개까지만 보여주고 숫자로 보완
+      const label = item.open
+        ? "정답 숨기기"
+        : `${dots}${count > 0 ? ` (${count}개)` : " (0개)"}`;
 
-if(item.open){
-const ul = document.createElement("ul");
-item.answers.forEach(a=>{
-const li=document.createElement("li");
-li.textContent=a;
-ul.appendChild(li);
-});
-card.appendChild(ul);
-}
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = label;
+      btn.onclick = () => {
+        item.open = !item.open;
+        renderList();
+      };
+      card.appendChild(btn);
 
-list.appendChild(card);
-});
-}
+      if (item.open) {
+        const ul = document.createElement("ul");
+        item.answers.forEach((ans) => {
+          const li = document.createElement("li");
+          li.textContent = ans;
+          ul.appendChild(li);
+        });
+        card.appendChild(ul);
+      }
 
-async function loadData(){
-const url=`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(RANGE)}?key=${API_KEY}`;
-const res = await fetch(url);
-const data = await res.json();
+      listEl.appendChild(card);
+    });
+  }
 
-allData = groupByEra(data.values||[]);
+  async function loadData() {
+    setStatus("구글시트에서 데이터를 불러오는 중...");
 
-currentTab = Object.keys(allData)[0];
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(RANGE)}?key=${API_KEY}`;
+    const res = await fetch(url, { cache: "no-store" });
 
-renderTabs();
-renderList();
+    if (!res.ok) {
+      const t = await res.text();
+      setStatus("불러오기 실패!\n" + t, true);
+      return;
+    }
 
-setStatus("불러오기 완료");
-}
+    const json = await res.json();
+    const values = json.values || [];
 
-window.addEventListener("DOMContentLoaded",loadData);
+    dataByEra = parseSheetValues(values);
+    const eras = Object.keys(dataByEra);
+
+    if (!eras.length) {
+      setStatus("데이터가 비어있어요. A열에 시대부터 입력돼 있는지 확인해 주세요.", true);
+      renderTabs();
+      renderList();
+      return;
+    }
+
+    currentEra = eras[0];
+    renderTabs();
+    renderList();
+    setStatus(`완료! 시대 ${eras.length}개 / ${currentEra} 선택됨`);
+  }
+
+  window.addEventListener("DOMContentLoaded", () => {
+    loadData().catch(err => {
+      setStatus("자바스크립트 에러:\n" + (err?.message || String(err)), true);
+    });
+  });
 </script>
-
 </body>
 </html>
